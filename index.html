@@ -1,200 +1,176 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <title>PM Calendar Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>PM Year Plan</title>
+<style>
+body{font-family:Arial;background:#eef2ff;margin:0;padding:20px;}
+h2{color:#1d4ed8;margin-bottom:10px;}
+table{width:100%;border-collapse:collapse;margin-top:10px;background:white;}
+th,td{border:1px solid #cfcfcf;padding:6px;text-align:center;}
+th{background:#1d4ed8;color:white;}
+.cell{cursor:pointer;transition:0.2s;}
+.cell:hover{transform:scale(1.05);box-shadow:0 0 10px rgba(0,0,0,0.2);}
+.overdue{background:#ffb3b3;}
+.soon{background:#ffe89c;}
+.normal{background:#baffc0;}
+#status{margin-top:10px;color:#64748b;font-size:0.9rem;}
 
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css">
-
-  <style>
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      background: #eef2ff;
-      color: #0f172a;
-    }
-
-    header {
-      padding: 16px 24px;
-      background: #1d4ed8;
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .toolbar {
-      background:white;
-      padding:10px;
-      border-bottom:1px solid #d1d5db;
-      display:flex;
-      gap:10px;
-    }
-
-    button{
-      background:#1d4ed8;
-      color:white;
-      border:none;
-      padding:6px 12px;
-      border-radius:6px;
-      cursor:pointer;
-    }
-    button:hover{
-      background:#123baf;
-    }
-
-    #yearView table {
-      width:100%;
-      border-collapse: collapse;
-      margin-top:15px;
-      background:white;
-      border-radius:10px;
-      overflow:hidden;
-    }
-    #yearView th, #yearView td {
-      border:1px solid #c7c7c7;
-      padding:6px;
-      text-align:center;
-    }
-    #yearView th {
-      background:#1d4ed8;
-      color:white;
-    }
-
-    .event-overdue { background:#ffb3b3!important; }
-    .event-due-soon { background:#ffe8a1!important; }
-    .event-normal { background:#c8ffd3!important; }
-  </style>
+/* MODAL */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:none;justify-content:center;align-items:center;}
+.modal.active{display:flex;}
+.modal-content{background:white;padding:20px;border-radius:12px;width:310px;
+  box-shadow:0 8px 30px rgba(0,0,0,0.3);}
+.modal-content h3{margin-top:0;color:#1d4ed8;font-size:17px;}
+.modal-content input, select{
+  width:100%;padding:7px;margin:6px 0 10px;border-radius:6px;border:1px solid #ccc;
+}
+button{padding:8px 12px;border:none;border-radius:6px;margin-left:6px;cursor:pointer;}
+.save{background:#1d4ed8;color:white;font-weight:bold;}
+.cancel{background:#999;color:white;}
+</style>
 </head>
 <body>
 
-<header>
-  <h2>📅 PM Calendar Dashboard</h2>
-  <div>Live from Google Sheets</div>
-</header>
+<h2>📅 Preventive Maintenance — Year View</h2>
+<div id="status">⏳ Loading...</div>
+<div id="container"></div>
 
-<div class="toolbar">
-  <button onclick="generateSchedule()">🔧 Generate 1 Tahun</button>
-  <button onclick="showCalendar()">📅 Calendar</button>
-  <button onclick="showList()">📋 List</button>
-  <button onclick="showYear()">🗓 Year View</button>
+<div class="modal" id="editModal">
+  <div class="modal-content">
+    <h3 id="modalTitle"></h3>
+
+    <label>Start Date</label>
+    <input type="date" id="inputStart">
+
+    <label>Finish Date</label>
+    <input type="date" id="inputFinish">
+
+    <label>Status</label>
+    <select id="inputStatus">
+      <option>Planning</option>
+      <option>On Progress</option>
+      <option>Selesai</option>
+    </select>
+
+    <div style="text-align:right;">
+      <button class="cancel" onclick="closeModal()">Cancel</button>
+      <button class="save" onclick="saveUpdate()">Save</button>
+    </div>
+  </div>
 </div>
-
-<div id="calendar"></div>
-
-<div class="list-wrapper" style="display:none;padding:10px;background:white;border-radius:10px;margin:10px;">
-  <ul id="pmList"></ul>
-</div>
-
-<!-- AREA VIEW TAHUN -->
-<div id="yearView" style="display:none;padding:15px;"></div>
-
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
 <script>
+const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzLzrLPKgy-z0Ks3PXO6sYw7_6E1C6U4B9_G3vbd2H0G-SR1iFWPAci087uYU2h1XwgRw/exec?action=update&month=JAN&row=2&status=TES_DARI_URL&start=2025-02-10&finish=2025-02-12";
+const API_URL = WEBAPP_URL + "?action=pmYear";
 
-let calendar;
-let allPmData = [];
+let pmData=[];
+let selectedMonth, selectedRowIndex;
 
-document.addEventListener("DOMContentLoaded", function(){
-  const calendarEl = document.getElementById("calendar");
-
-  calendar = new FullCalendar.Calendar(calendarEl, {
-    initialView:"dayGridMonth",
-    height:"auto"
-  });
-
-  calendar.render();
-  loadPMData();
-});
-
-function loadPMData(){
-  google.script.run.withSuccessHandler(data=>{
-    allPmData=data||[];
-    renderCalendar();
-    renderList();
-  }).getPMData();
+async function loadPM(){
+  document.getElementById("status").textContent="⏳ Loading...";
+  
+  try{
+    const res = await fetch(API_URL);
+    pmData = await res.json();
+    renderTable();
+    document.getElementById("status").textContent="✔ Data Loaded";
+  }catch(err){
+    document.getElementById("status").textContent="❌ ERROR LOADING DATA — Check Internet or WebApp URL";
+    console.error(err);
+    alert("❌ Gagal memuat data!\n\nError: " + err.message);
+  }
 }
 
-function generateSchedule(){
-  google.script.run.generateFullYear();
-  setTimeout(loadPMData,1000);
+function getColor(date){
+  if(!date) return "";
+  const diff = (new Date(date) - new Date()) / 86400000;
+  return diff < 0 ? "overdue" : diff <= 7 ? "soon" : "normal";
 }
 
-/* ---------- MODE SWITCH ---------- */
-function showCalendar(){
-  document.getElementById("calendar").style.display="block";
-  document.querySelector(".list-wrapper").style.display="none";
-  document.getElementById("yearView").style.display="none";
-}
+function renderTable(){
+  const months=["JAN","FEB","MAR","APR","MEI","JUN","JUL","AGT","SEP","OKT","NOV","DES"];
+  let html=`<table><tr><th>Plant</th><th>Last PM</th><th>Frekuensi</th><th>Next PM</th>`;
+  html+=months.map(m=>`<th>${m}</th>`).join("") + "</tr>";
 
-function showList(){
-  document.getElementById("calendar").style.display="none";
-  document.querySelector(".list-wrapper").style.display="block";
-  document.getElementById("yearView").style.display="none";
-}
-
-function showYear(){
-  document.getElementById("calendar").style.display="none";
-  document.querySelector(".list-wrapper").style.display="none";
-  document.getElementById("yearView").style.display="block";
-  renderYearView();
-}
-
-/* ---------- YEAR VIEW FEATURE ---------- */
-function renderYearView(){
-  const months=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-  let html=`<table><tr><th>PLANT</th>${months.map(m=>`<th>${m}</th>`).join("")}</tr>`;
-
-  allPmData.forEach(row=>{
-    html+=`<tr><td><b>${row.plant}</b></td>`;
-    row.yearSchedule.forEach(date=>{
-      let style=getYearColor(date);
-      html+=`<td style="${style}" onclick="alert('${row.plant} → ${date}')">${date||"-"}</td>`;
+  pmData.forEach((row,i)=>{
+    html+=`<tr><td><b>${row.plant}</b></td>
+      <td>${row.lastPM||"-"}</td><td>${row.freq||"-"}</td><td>${row.nextPM||"-"}</td>`;
+    row.schedule.forEach(c=>{
+      html+=`<td class="cell ${getColor(c.start)}"
+        onclick="openModal('${c.month}',${i})">
+        ${c.start||"-"}<br><small>${c.status||""}</small></td>`;
     });
-    html+=`</tr>`;
+    html+="</tr>";
   });
 
   html+="</table>";
-  document.getElementById("yearView").innerHTML=html;
+  document.getElementById("container").innerHTML = html;
 }
 
-function getYearColor(date){
-  if(!date) return "background:#f5f5f5;";
-  const diff=(new Date(date)-new Date())/(1000*60*60*24);
-  if(diff<0) return "background:#ffb3b3;"; 
-  if(diff<=7) return "background:#ffe8a1;"; 
-  return "background:#c8ffd3;";
+function openModal(month,i){
+  selectedMonth=month;
+  selectedRowIndex=pmData[i].rowIndex;
+  const c = pmData[i].schedule.find(x => x.month===month);
+  document.getElementById("modalTitle").innerText=`Edit ${pmData[i].plant} — ${month}`;
+  document.getElementById("inputStart").value=c.start||"";
+  document.getElementById("inputFinish").value=c.finish||"";
+  document.getElementById("inputStatus").value=c.status||"Planning";
+  document.getElementById("editModal").classList.add("active");
 }
 
-/* ---------- CALENDAR EVENTS ---------- */
-function renderCalendar(){
-  calendar.removeAllEvents();
-  allPmData.forEach(item=>{
-    item.yearSchedule.forEach(date=>{
-      if(date){
-        calendar.addEvent({ title:item.plant,start:date, className:[getStatus(date)] });
-      }
+function closeModal(){
+  document.getElementById("editModal").classList.remove("active");
+}
+
+// 🚀 SAVE FUNCTION + ERROR HANDLING
+async function saveUpdate(){
+
+  const payload = {
+    month:selectedMonth,
+    row:selectedRowIndex,
+    start:document.getElementById("inputStart").value,
+    finish:document.getElementById("inputFinish").value,
+    status:document.getElementById("inputStatus").value
+  };
+
+  // Loading message
+  document.getElementById("status").textContent = "⏳ Saving... Please wait";
+
+  try{
+    const controller = new AbortController();
+    const timeout = setTimeout(()=>controller.abort(), 7000); // ⏱ auto cancel 7s
+
+    const res = await fetch(WEBAPP_URL,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify(payload),
+      signal:controller.signal
     });
-  });
+
+    clearTimeout(timeout);
+
+    if(!res.ok) throw new Error("Server returned status " + res.status);
+
+    let result = await res.json().catch(()=>null);
+
+    if(result?.success){
+      alert("✅ Data berhasil disimpan!");
+    }else{
+      throw new Error(result?.error || "Unknown error from server");
+    }
+
+    closeModal();
+    loadPM();
+
+  }catch(err){
+    console.error(err);
+    alert(`❌ Gagal menyimpan data!\n\nPenyebab:\n${err.message}\n\n👉 Cek:\n- Izin WebApp (Deploy ulang)\n- Internet\n- Format WebApp URL`);
+    document.getElementById("status").textContent = "⚠ ERROR SAVING — Check connection";
+  }
 }
 
-function getStatus(date){
-  const diff=(new Date(date)-new Date())/(1000*60*60*24);
-  if(diff<0) return "event-overdue";
-  if(diff<=7) return "event-due-soon";
-  return "event-normal";
-}
-
-/* ---------- LIST VIEW ---------- */
-function renderList(){
-  document.getElementById("pmList").innerHTML=
-    allPmData.map(d=>`<li><b>${d.plant}</b> → Next: ${d.nextPM}</li>`).join("");
-}
-
+loadPM();
 </script>
 </body>
 </html>
