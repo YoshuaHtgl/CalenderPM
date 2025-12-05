@@ -2,175 +2,314 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<title>PM Year Plan</title>
-<style>
-body{font-family:Arial;background:#eef2ff;margin:0;padding:20px;}
-h2{color:#1d4ed8;margin-bottom:10px;}
-table{width:100%;border-collapse:collapse;margin-top:10px;background:white;}
-th,td{border:1px solid #cfcfcf;padding:6px;text-align:center;}
-th{background:#1d4ed8;color:white;}
-.cell{cursor:pointer;transition:0.2s;}
-.cell:hover{transform:scale(1.05);box-shadow:0 0 10px rgba(0,0,0,0.2);}
-.overdue{background:#ffb3b3;}
-.soon{background:#ffe89c;}
-.normal{background:#baffc0;}
-#status{margin-top:10px;color:#64748b;font-size:0.9rem;}
+<title>PM Calendar</title>
 
-/* MODAL */
-.modal{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:none;justify-content:center;align-items:center;}
-.modal.active{display:flex;}
-.modal-content{background:white;padding:20px;border-radius:12px;width:310px;
-  box-shadow:0 8px 30px rgba(0,0,0,0.3);}
-.modal-content h3{margin-top:0;color:#1d4ed8;font-size:17px;}
-.modal-content input, select{
-  width:100%;padding:7px;margin:6px 0 10px;border-radius:6px;border:1px solid #ccc;
-}
-button{padding:8px 12px;border:none;border-radius:6px;margin-left:6px;cursor:pointer;}
-.save{background:#1d4ed8;color:white;font-weight:bold;}
-.cancel{background:#999;color:white;}
+<style>
+  body{
+    font-family: Arial, sans-serif;
+    padding:20px;
+    background:#eef2ff;
+  }
+  h2{ margin-top:0; }
+
+  table{
+    border-collapse:collapse;
+    width:100%;
+    margin-top:15px;
+    background:white;
+  }
+  th,td{
+    border:1px solid #ccc;
+    padding:6px 8px;
+    font-size:13px;
+  }
+  th{
+    background:#2563eb;
+    color:white;
+    position:sticky;
+    top:0;
+    z-index:2;
+    text-align:center;
+  }
+  td:first-child{ font-weight:bold; }
+
+  .month-cell{
+    text-align:center;
+    cursor:pointer;
+    font-size:10px;
+    font-weight:bold;
+    min-width:55px;
+    padding:4px;
+    white-space:nowrap;
+  }
+
+  /* STATUS COLORS */
+  .st-empty{ background:#f3f4f6; color:#6b7280; }
+  .st-out{ background:#fee2e2; color:#b91c1c; }
+  .st-progress{ background:#fef3c7; color:#92400e; }
+  .st-done{ background:#dcfce7; color:#166534; }
+  .month-cell:hover{ filter:brightness(0.9); }
+
+  .mini-date{
+    font-size:11px;
+    font-weight:500;
+    color:#333;
+    white-space:nowrap;
+  }
+
+  /* MODAL */
+  #overlay{
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.4);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:10;
+  }
+
+  #editModal{
+    background:white;
+    padding:18px;
+    width:350px;
+    border-radius:10px;
+    box-shadow:0 8px 30px rgba(0,0,0,0.25);
+  }
+
+  #editModal input,#editModal select{ width:100%; padding:6px; margin-top:5px; }
+
+  .btn-row{ display:flex; gap:8px; margin-top:12px; }
+  #btnSave{ background:#2563eb; color:white; flex:1; }
+  #btnCancel{ background:#ddd; }
+
+  /* LOADING */
+  #progressOverlay{
+    position:fixed; inset:0;
+    background:rgba(255,255,255,0.7);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:999;
+    flex-direction:column;
+  }
+
+  .predict-cell{
+    background:#dbeafe;
+    color:#1e3a8a;
+    font-weight:bold;
+    border:2px solid #1d4ed8;
+  }
 </style>
 </head>
+
 <body>
+<h2>📋 Preventive Maintenance Calendar</h2>
+<button onclick="loadData()">🔄 Refresh</button>
+<span id="statusText" style="font-size:12px;color:#555;margin-left:6px;"></span>
 
-<h2>📅 Preventive Maintenance — Year View</h2>
-<div id="status">⏳ Loading...</div>
-<div id="container"></div>
+<table id="pmTable">
+  <thead></thead>
+  <tbody></tbody>
+</table>
 
-<div class="modal" id="editModal">
-  <div class="modal-content">
-    <h3 id="modalTitle"></h3>
-
-    <label>Start Date</label>
-    <input type="date" id="inputStart">
-
-    <label>Finish Date</label>
-    <input type="date" id="inputFinish">
+<!-- MODAL -->
+<div id="overlay">
+  <div id="editModal">
+    <h3 id="modalTitle" style="margin-bottom:10px;"></h3>
 
     <label>Status</label>
-    <select id="inputStatus">
-      <option>Planning</option>
-      <option>On Progress</option>
-      <option>Selesai</option>
+    <select id="statusInput">
+      <option value="">(kosong)</option>
+      <option value="OUTSTANDING">OUTSTANDING</option>
+      <option value="PROGRESS">PROGRESS</option>
+      <option value="SELESAI">SELESAI</option>
     </select>
 
-    <div style="text-align:right;">
-      <button class="cancel" onclick="closeModal()">Cancel</button>
-      <button class="save" onclick="saveUpdate()">Save</button>
+    <label>Start Date</label>
+    <input type="date" id="startInput">
+
+    <label>Finish Date</label>
+    <input type="date" id="finishInput">
+
+    <div class="btn-row">
+      <button id="btnCancel" onclick="closeModal()">Batal</button>
+      <button id="btnSave" onclick="saveMonth()">Simpan</button>
     </div>
+
+    <small id="colInfo" style="color:#666;margin-top:10px;display:block;"></small>
   </div>
 </div>
 
+<!-- LOADING -->
+<div id="progressOverlay">
+  <b>Menyimpan...</b>
+  <div style="width:200px;height:10px;background:#ddd;border-radius:5px;margin-top:8px;">
+    <div id="progressFill" style="width:0%;height:100%;background:#2563eb;transition:.2s;"></div>
+  </div>
+  <span id="progressText" style="font-size:12px;margin-top:4px;">0%</span>
+</div>
+
 <script>
-const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzLzrLPKgy-z0Ks3PXO6sYw7_6E1C6U4B9_G3vbd2H0G-SR1iFWPAci087uYU2h1XwgRw/exec?action=update&month=JAN&row=2&status=TES_DARI_URL&start=2025-02-10&finish=2025-02-12";
-const API_URL = WEBAPP_URL + "?action=pmYear";
+const apiURL = "https://script.google.com/macros/s/AKfycbwV7YMhqG3EbC2i5jzmF_cL7D137Krs5Jc9VoFAVvtiV3yt-F4gz4byu37TLbVlcM9gxw/exec";
+const BASE_COLS = ["NAMA PLANT","LAST PM","FREK","NEXT PM"];
+const MONTHS = ["JAN","FEB","MAR","APR","MEI","JUN","JUL","AGT","SEP","OKT","NOV","DES"];
 
-let pmData=[];
-let selectedMonth, selectedRowIndex;
+let allData=[], currentRowIndex=null, currentMonth=null;
 
-async function loadPM(){
-  document.getElementById("status").textContent="⏳ Loading...";
-  
+// FORMAT TANGGAL (DISPLAY)
+function formatDisplayDate(v){
+  if(!v) return "";
+  let d = new Date(v);
+  if(isNaN(d)) return v;
+  return d.toLocaleDateString("id-ID"); // dd/mm/yyyy
+}
+
+// FORMAT UNTUK INPUT (YYYY-MM-DD)
+function formatInputDate(v){
+  if(!v) return "";
+  let d = new Date(v);
+  if(isNaN(d)) return "";
+  return d.toISOString().split("T")[0];
+}
+
+// LOAD DATA
+async function loadData(){
+  document.getElementById("statusText").textContent="Memuat...";
   try{
-    const res = await fetch(API_URL);
-    pmData = await res.json();
+    let res = await fetch(apiURL+"?action=get");
+    allData = await res.json();
     renderTable();
-    document.getElementById("status").textContent="✔ Data Loaded";
-  }catch(err){
-    document.getElementById("status").textContent="❌ ERROR LOADING DATA — Check Internet or WebApp URL";
-    console.error(err);
-    alert("❌ Gagal memuat data!\n\nError: " + err.message);
-  }
+    document.getElementById("statusText").textContent="✔ Loaded";
+  }catch(e){ alert("Gagal load: "+e.message); }
 }
 
-function getColor(date){
-  if(!date) return "";
-  const diff = (new Date(date) - new Date()) / 86400000;
-  return diff < 0 ? "overdue" : diff <= 7 ? "soon" : "normal";
-}
-
+// RENDER TABLE
 function renderTable(){
-  const months=["JAN","FEB","MAR","APR","MEI","JUN","JUL","AGT","SEP","OKT","NOV","DES"];
-  let html=`<table><tr><th>Plant</th><th>Last PM</th><th>Frekuensi</th><th>Next PM</th>`;
-  html+=months.map(m=>`<th>${m}</th>`).join("") + "</tr>";
+  const head = document.querySelector("#pmTable thead");
+  const body = document.querySelector("#pmTable tbody");
+  const currentYear = new Date().getFullYear();
 
-  pmData.forEach((row,i)=>{
-    html+=`<tr><td><b>${row.plant}</b></td>
-      <td>${row.lastPM||"-"}</td><td>${row.freq||"-"}</td><td>${row.nextPM||"-"}</td>`;
-    row.schedule.forEach(c=>{
-      html+=`<td class="cell ${getColor(c.start)}"
-        onclick="openModal('${c.month}',${i})">
-        ${c.start||"-"}<br><small>${c.status||""}</small></td>`;
+  head.innerHTML = "<tr>"+[...BASE_COLS,...MONTHS,"Next"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
+
+  body.innerHTML = allData.map((row,i)=>{
+    const lastPMText = row["LAST PM"] ? `<span class="mini-date">${formatDisplayDate(row["LAST PM"])}</span>` : "";
+    const nextPMRaw = row["NEXT PM"] || "";
+    const nextPMDate = nextPMRaw ? new Date(nextPMRaw) : null;
+    const nextYear   = nextPMDate ? nextPMDate.getFullYear() : null;
+    const nextPMText = nextPMRaw ? `<span class="mini-date">${formatDisplayDate(nextPMRaw)}</span>` : "";
+
+    let html = `
+      <tr>
+        <td>${row["NAMA PLANT"] || ""}</td>
+        <td>${lastPMText}</td>
+        <td style="text-align:center">${row["FREK"] || ""}</td>
+        <td>${nextPMText}</td>
+    `;
+
+    // Kolom bulan JAN–DES
+    MONTHS.forEach(m => {
+      let st = row[`${m}_STATUS`] || "";
+      let s = row[`${m}_START`] || "";
+      let f = row[`${m}_FINISH`] || "";
+
+      let predicted = false;
+
+      // Highlight di bulan hanya kalau NEXT PM masih di tahun ini
+      if (nextPMDate && nextYear === currentYear) {
+        let monthIndex = nextPMDate.getMonth(); // 0..11
+        if (MONTHS.indexOf(m) === monthIndex && !st) {
+          predicted = true;
+        }
+      }
+
+      let className = predicted ? "predict-cell" : getClass(st);
+      html += `<td class="month-cell ${className}" onclick="openModal(${i},'${m}')">${formatCell(st,s,f)}</td>`;
     });
-    html+="</tr>";
-  });
 
-  html+="</table>";
-  document.getElementById("container").innerHTML = html;
+    // Kolom paling kanan "Next"
+    let nextLabel = "";
+    let nextClass = "";
+    if (nextPMDate && nextYear > currentYear) {
+      nextLabel = formatDisplayDate(nextPMDate);
+      nextClass = "predict-cell";
+    }
+    html += `<td class="${nextClass}">${nextLabel}</td>`;
+
+    return html + "</tr>";
+  }).join("");
 }
 
-function openModal(month,i){
-  selectedMonth=month;
-  selectedRowIndex=pmData[i].rowIndex;
-  const c = pmData[i].schedule.find(x => x.month===month);
-  document.getElementById("modalTitle").innerText=`Edit ${pmData[i].plant} — ${month}`;
-  document.getElementById("inputStart").value=c.start||"";
-  document.getElementById("inputFinish").value=c.finish||"";
-  document.getElementById("inputStatus").value=c.status||"Planning";
-  document.getElementById("editModal").classList.add("active");
+function getClass(s){
+  s=s.toUpperCase();
+  if(s.includes("OUT")) return "st-out";
+  if(s.includes("PROGRESS")) return "st-progress";
+  if(s.includes("SELESAI")) return "st-done";
+  return "st-empty";
 }
 
-function closeModal(){
-  document.getElementById("editModal").classList.remove("active");
+function formatCell(status,start,finish){
+  if(!status) return "-";
+  return `<span style="font-size:10px;font-weight:bold;">${status}</span>`;
 }
 
-// 🚀 SAVE FUNCTION + ERROR HANDLING
-async function saveUpdate(){
+// OPEN MODAL
+function openModal(i,m){
+  currentRowIndex=i; currentMonth=m;
+  let r=allData[i];
 
-  const payload = {
-    month:selectedMonth,
-    row:selectedRowIndex,
-    start:document.getElementById("inputStart").value,
-    finish:document.getElementById("inputFinish").value,
-    status:document.getElementById("inputStatus").value
-  };
+  document.getElementById("modalTitle").textContent=`${m} - ${r["NAMA PLANT"]}`;
 
-  // Loading message
-  document.getElementById("status").textContent = "⏳ Saving... Please wait";
+  document.getElementById("statusInput").value=r[`${m}_STATUS`]||"";
+  document.getElementById("startInput").value=formatInputDate(r[`${m}_START`]||"");
+  document.getElementById("finishInput").value=formatInputDate(r[`${m}_FINISH`]||"");
 
+  document.getElementById("colInfo").textContent=`Kolom: ${m}_STATUS, ${m}_START, ${m}_FINISH`;
+  document.getElementById("overlay").style.display="flex";
+}
+
+function closeModal(){ document.getElementById("overlay").style.display="none"; }
+
+// SAVE
+async function saveMonth(){
+  showProgress();
   try{
-    const controller = new AbortController();
-    const timeout = setTimeout(()=>controller.abort(), 7000); // ⏱ auto cancel 7s
+    let row=currentRowIndex+2;
+    let updates=[
+      {col:`${currentMonth}_STATUS`,val:document.getElementById("statusInput").value},
+      {col:`${currentMonth}_START`,val:document.getElementById("startInput").value},
+      {col:`${currentMonth}_FINISH`,val:document.getElementById("finishInput").value}
+    ];
 
-    const res = await fetch(WEBAPP_URL,{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify(payload),
-      signal:controller.signal
-    });
-
-    clearTimeout(timeout);
-
-    if(!res.ok) throw new Error("Server returned status " + res.status);
-
-    let result = await res.json().catch(()=>null);
-
-    if(result?.success){
-      alert("✅ Data berhasil disimpan!");
-    }else{
-      throw new Error(result?.error || "Unknown error from server");
+    let step=0;
+    for(let u of updates){
+      let res=await fetch(apiURL,{method:"POST",body:new URLSearchParams({action:"update",row,col:u.col,value:u.val})});
+      let txt=await res.text();
+      if(!txt.includes("OK")) throw new Error(txt);
+      step+=Math.floor(100/updates.length);
+      updateProgress(step);
+      await new Promise(r=>setTimeout(r,200));
     }
 
-    closeModal();
-    loadPM();
+    updateProgress(100);
+    await new Promise(r=>setTimeout(r,300));
 
-  }catch(err){
-    console.error(err);
-    alert(`❌ Gagal menyimpan data!\n\nPenyebab:\n${err.message}\n\n👉 Cek:\n- Izin WebApp (Deploy ulang)\n- Internet\n- Format WebApp URL`);
-    document.getElementById("status").textContent = "⚠ ERROR SAVING — Check connection";
+    hideProgress(); closeModal(); loadData();
+    alert("✔ Disimpan!");
+  }catch(e){
+    hideProgress();
+    alert("❌ ERROR: "+e.message);
   }
 }
 
-loadPM();
+// UI HELPERS
+function showProgress(){ document.getElementById("progressOverlay").style.display="flex"; updateProgress(5); }
+function hideProgress(){ document.getElementById("progressOverlay").style.display="none"; updateProgress(0); }
+function updateProgress(v){
+  document.getElementById("progressFill").style.width=v+"%";
+  document.getElementById("progressText").textContent=v+"%";
+}
+
+loadData();
 </script>
+
 </body>
 </html>
